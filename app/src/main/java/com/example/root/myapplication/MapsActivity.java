@@ -4,9 +4,11 @@ import android.Manifest;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
@@ -21,7 +23,10 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
+import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polygon;
 import com.google.android.gms.maps.model.PolygonOptions;
 import com.google.maps.android.PolyUtil;
@@ -36,6 +41,7 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
     private LocationRequest mLocationRequest;
     private GoogleApiClient mGoogleApiClient;
     private Polygon mPolygon;
+    private Marker mPositionMarker = null;
     private boolean contain;
     private List<LatLng> points = new ArrayList<>();
     public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
@@ -66,7 +72,7 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
                             @Override
                             public void onClick(DialogInterface dialogInterface, int i) {
                                 //Prompt the user once explanation has been shown
-                                ActivityCompat.requestPermissions(MapsActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, MY_PERMISSIONS_REQUEST_LOCATION );
+                                ActivityCompat.requestPermissions(MapsActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, MY_PERMISSIONS_REQUEST_LOCATION);
                             }
                         })
                         .create()
@@ -75,7 +81,7 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
 
             } else {
                 // No explanation needed, we can request the permission.
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, MY_PERMISSIONS_REQUEST_LOCATION );
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, MY_PERMISSIONS_REQUEST_LOCATION);
             }
         }
     }
@@ -108,8 +114,7 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
             } else {
                 checkLocationPermission();
             }
-        }
-        else {
+        } else {
             buildGoogleApiClient();
             mGoogleMap.setMyLocationEnabled(true);
         }
@@ -120,8 +125,14 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
             public void onMapLongClick(LatLng latLng) {
 
                 points.add(latLng);
-                if (mPolygon != null) {mPolygon.remove();}
-                mPolygon = googleMap.addPolygon(new PolygonOptions().addAll(points));
+                if (mPolygon != null) {
+                    mPolygon.remove();
+                }
+                PolygonOptions polygonOptions = new PolygonOptions()
+                        .addAll(points)
+                        .strokeColor(Color.BLUE);
+                // .fillColor(0x7F00FF00)
+                mPolygon = googleMap.addPolygon(polygonOptions);
 
             }
         });
@@ -140,30 +151,43 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     @Override
-    public void onConnectionSuspended(int i) {}
+    public void onConnectionSuspended(int i) {
+    }
 
     @Override
-    public void onConnectionFailed(ConnectionResult connectionResult) {}
+    public void onConnectionFailed(ConnectionResult connectionResult) {
+    }
 
     @Override
     public void onLocationChanged(Location location) {
+
         LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
-        mGoogleMap.moveCamera(CameraUpdateFactory.newLatLng(latLng));
+
         this.contain = PolyUtil.containsLocation(latLng, points, true);
 
-        if ( points != null) {
-            if ( this.contain ) {
-                System.out.println("DENTRO DEL PERIMETRO");
-            }
-            else {
-                System.out.println("FUERA DEL PERIMETRO");
+        MarkerOptions markerOptionsPosition = new MarkerOptions().position(latLng);
+
+        if (points != null) {
+            if (this.contain) {
+                markerOptionsPosition.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE));
+            } else {
+                markerOptionsPosition.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
             }
         }
+
+        mGoogleMap.moveCamera(CameraUpdateFactory.newLatLng(latLng));
+
+        if (mPositionMarker != null) {
+            mPositionMarker.remove();
+        }
+
+        mPositionMarker = mGoogleMap.addMarker(markerOptionsPosition);
+
 
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, @NonNull String permissions[], @NonNull int[] grantResults) {
         switch (requestCode) {
             case MY_PERMISSIONS_REQUEST_LOCATION: {
                 // If request is cancelled, the result arrays are empty.
@@ -185,7 +209,6 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
                     // functionality that depends on this permission.
                     Toast.makeText(this, "permission denied", Toast.LENGTH_LONG).show();
                 }
-                return;
             }
         }
     }
