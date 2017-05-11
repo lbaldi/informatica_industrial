@@ -2,12 +2,17 @@ package com.example.root.myapplication;
 
 import android.Manifest;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Location;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.StrictMode;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
@@ -31,8 +36,12 @@ import com.google.android.gms.maps.model.Polygon;
 import com.google.android.gms.maps.model.PolygonOptions;
 import com.google.maps.android.PolyUtil;
 
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+
+import javax.mail.MessagingException;
 
 
 public class MapsActivity extends AppCompatActivity implements OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, LocationListener {
@@ -45,6 +54,7 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
     private boolean contain;
     private List<LatLng> points = new ArrayList<>();
     public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
+    private String message = null;
 
     protected synchronized void buildGoogleApiClient() {
         mGoogleApiClient = new GoogleApiClient.Builder(this)
@@ -92,6 +102,10 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
         setContentView(R.layout.activity_maps);
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
+        StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder()
+                .permitAll()
+                .build();
+        StrictMode.setThreadPolicy(policy);
     }
 
     @Override
@@ -158,21 +172,61 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void onConnectionFailed(ConnectionResult connectionResult) {
     }
 
+
+    private boolean isOnline() {
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo netInfo = cm.getActiveNetworkInfo();
+        if (netInfo != null && netInfo.isConnectedOrConnecting()) {
+            return true;
+        }
+        return false;
+    }
+
+    private void sendNotification(String message){
+
+        if(this.isOnline()){
+
+            List<String> recipients = new ArrayList<>();
+            recipients.add("baldileandro@gmail.com");
+            recipients.add("dccdany93@gmail.com");
+            GMail sender = new GMail(
+                    "informaticaindustrial2017@gmail.com",
+                    "informatica2k17",
+                    recipients ,
+                    "ALERTA!",
+                    message
+            );
+            try {
+                sender.createEmailMessage();
+            } catch (MessagingException e) {
+                e.printStackTrace();
+            } catch (UnsupportedEncodingException e) {
+                e.printStackTrace();
+            }
+            try {
+                sender.sendEmail();
+            } catch (MessagingException e) {
+                e.printStackTrace();
+            }
+
+        }
+    }
+
     @Override
     public void onLocationChanged(Location location) {
 
         LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
 
+        Boolean prevContain = this.contain;
+
         this.contain = PolyUtil.containsLocation(latLng, points, true);
 
         MarkerOptions markerOptionsPosition = new MarkerOptions().position(latLng);
 
-        if (points != null) {
-            if (this.contain) {
-                markerOptionsPosition.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE));
-            } else {
-                markerOptionsPosition.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
-            }
+        if (this.contain) {
+            markerOptionsPosition.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE));
+        } else {
+            markerOptionsPosition.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
         }
 
         mGoogleMap.moveCamera(CameraUpdateFactory.newLatLng(latLng));
@@ -183,7 +237,46 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         mPositionMarker = mGoogleMap.addMarker(markerOptionsPosition);
 
+        double distance = this.getDistance(latLng);
+        String distanceString = new StringBuilder().append(distance).toString();
 
+        if (prevContain != this.contain){
+
+            String successMsg = "Todo ha vuelto a la normalidad";
+            String failureMsg = "<html>" +
+                    "<p>El dispositivo ha salido del area.</p>" +
+                    "<p>La distancia al area es de: " + distanceString + " mts.</p>" +
+                    "<p>La posicion actual es Latitud: " + latLng.latitude + ", Longitud: " + latLng.longitude + "</p>" +
+                    "<a href='https://maps.google.com/maps?q=" + latLng.latitude + "," + latLng.longitude + "&hl=es;z=16&amp;output=embed'>Ver en el Mapa</a>" +
+                    "</html>";
+
+            message = this.contain == true ? successMsg : failureMsg;
+
+            AsyncTask.execute(new Runnable() {
+                @Override
+                public void run() {
+                    sendNotification(message);
+                }
+            });
+        }
+
+    }
+
+    private double getDistance(LatLng latLng) {
+
+        double minDistance = 0.0;
+
+        if (points.size() > 2){
+            for (int i = 0; i < points.size() - 1; i++){
+                double distance = PolyUtil.distanceToLine(latLng, points.get(i), points.get(i+1));
+                if (minDistance == 0.0){
+                    minDistance = distance;
+                }
+                minDistance = distance < minDistance ? distance : minDistance;
+            }
+        }
+
+        return Math.round(minDistance);
     }
 
     @Override
